@@ -1,0 +1,1 @@
+Agente somente leitura: lê arquivos, busca código e pesquisa na web, devolvendo um resumo objetivo com caminhos e fontes.

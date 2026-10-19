@@ -1,0 +1,16 @@
+{
+  "name": "termgrid-demo-src",
+  "private": true,
+  "description": "Fonte HTML do video de demonstracao do TermGrid (GSAP + captura com Playwright + FFmpeg)",
+  "scripts": {
+    "check": "node check.js",
+    "render": "node capture.js video",
+    "still": "node capture.js still",
+    "render:reels": "node capture.js video out/reels-silent.mp4 --reels",
+    "audio:reels": "node ../promo-src/audio/build-audio.js --page index.html --query \"?capture&fmt=reels\" --profile reels --video out/reels-silent.mp4 --out ../termgrid-demo-reels.mp4 --work ../promo-src/audio/out"
+  },
+  "devDependencies": {
+    "gsap": "3.12.5",
+    "playwright-core": "1.49.1"
+  }
+}

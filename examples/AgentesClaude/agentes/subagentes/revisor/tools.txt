@@ -1,0 +1,4 @@
+Read
+Grep
+Glob
+Bash

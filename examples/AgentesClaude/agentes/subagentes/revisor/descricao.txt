@@ -1,0 +1,1 @@
+Revisor de código: analisa as alterações, procura bugs, regressões e problemas de segurança, roda testes e dá um veredito.

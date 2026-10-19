@@ -1,0 +1,5 @@
+# Comandos extras liberados para o revisor (além de git status/diff/log)
+Bash(npm test:*)
+Bash(npm run test:*)
+Bash(npm run lint:*)
+Bash(cargo test:*)
