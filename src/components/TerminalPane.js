@@ -3,6 +3,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { readText, writeText } from '@tauri-apps/plugin-clipboard-manager';
 import { api } from '../lib/api.js';
 import { h } from '../lib/dom.js';
+import { icon } from '../lib/icons.js';
 
 const THEME = {
   background: '#1a1b23',
@@ -17,8 +18,23 @@ const THEME = {
  * Painel com cabeçalho e um terminal ligado a um PTY do backend.
  * spec: objeto PaneSpec aceito pelo comando Rust pty_spawn.
  * monitored: o status (círculo) e a reconexão ficam a cargo de um monitor externo (agentMonitor).
+ * compactable: o painel roda o Claude Code e mostra o botão que envia /compact.
+ * close: { title, icon } do botão de fechar (só aparece com onClose).
+ * onToggleSpan('col' | 'row') e onResizeStart(event): tamanho do painel no grid.
  */
-export function TerminalPane({ ptyId, spec, title, badge, monitored = false, onClose, onToggleMaximize }) {
+export function TerminalPane({
+  ptyId,
+  spec,
+  title,
+  badge,
+  monitored = false,
+  compactable = false,
+  close = { title: 'Fechar terminal', icon: 'close' },
+  onClose,
+  onToggleMaximize,
+  onToggleSpan,
+  onResizeStart,
+}) {
   const term = new Terminal({
     fontFamily: '"Cascadia Mono", "Cascadia Code", Consolas, monospace',
     fontSize: 13,
@@ -40,12 +56,21 @@ export function TerminalPane({ ptyId, spec, title, badge, monitored = false, onC
 
   const status = h('span', { class: 'pane-status', title: 'Em execução' });
   const body = h('div', { class: 'pane-body' });
+  const button = (name, label, onClick, extraClass = '') =>
+    h('button', { class: `icon-btn ${extraClass}`.trim(), title: label, 'aria-label': label, onClick }, icon(name));
+  const spanButtons = onToggleSpan && {
+    col: button('spanCol', 'Largura dupla (ocupar 2 colunas)', () => onToggleSpan('col')),
+    row: button('spanRow', 'Altura dupla (ocupar 2 linhas)', () => onToggleSpan('row')),
+  };
   const actions = h(
     'div',
     { class: 'pane-actions' },
-    h('button', { class: 'icon-btn', title: 'Reiniciar terminal', onClick: () => restart() }, '↻'),
-    h('button', { class: 'icon-btn', title: 'Maximizar / restaurar', onClick: () => onToggleMaximize?.() }, '⛶'),
-    onClose && h('button', { class: 'icon-btn danger', title: 'Fechar terminal', onClick: () => onClose() }, '✕'),
+    compactable && button('compact', 'Compactar sessão (/compact)', () => compact()),
+    button('restart', 'Reiniciar terminal', () => restart()),
+    spanButtons?.col,
+    spanButtons?.row,
+    button('maximize', 'Maximizar / restaurar', () => onToggleMaximize?.()),
+    onClose && button(close.icon, close.title, () => onClose(), 'danger'),
   );
   const header = h(
     'div',
@@ -55,7 +80,31 @@ export function TerminalPane({ ptyId, spec, title, badge, monitored = false, onC
     h('span', { class: 'pane-title' }, title),
     actions,
   );
-  const el = h('section', { class: 'pane' }, header, body);
+  const resizeHandle =
+    onResizeStart &&
+    h('div', { class: 'pane-resize', title: 'Arraste para ocupar 1 ou 2 células', onPointerDown: (event) => onResizeStart(event) });
+  const el = h('section', { class: 'pane' }, header, body, resizeHandle);
+
+  const setSpanState = (span) => {
+    if (!spanButtons) return;
+    spanButtons.col.classList.toggle('active', span.col > 1);
+    spanButtons.row.classList.toggle('active', span.row > 1);
+  };
+
+  /** Envia /compact ao Claude Code. O Enter vai separado para não chegar como colagem. */
+  function compact() {
+    if (!started || exited) return;
+    const run = runId;
+    api
+      .ptyWrite(ptyId, '/compact')
+      .then(() => {
+        setTimeout(() => {
+          if (run === runId && !exited) api.ptyWrite(ptyId, '\r').catch(() => {});
+        }, 150);
+      })
+      .catch(() => {});
+    term.focus();
+  }
 
   const setStatus = (state, label) => {
     status.dataset.state = state;
@@ -193,7 +242,9 @@ export function TerminalPane({ ptyId, spec, title, badge, monitored = false, onC
     },
     focus: () => term.focus(),
     restart,
+    compact,
     setStatus,
+    setSpanState,
     /** Estado do processo para o monitor. */
     info: () => ({ started, exited, startedAt, lastInputAt }),
     refit: scheduleFit,

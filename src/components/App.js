@@ -1,13 +1,14 @@
 import { ask, message } from '@tauri-apps/plugin-dialog';
 import { h } from '../lib/dom.js';
+import { icon } from '../lib/icons.js';
 import { TabBar } from './TabBar.js';
 import { HomeView } from './HomeView.js';
 import { WorkspaceView } from './WorkspaceView.js';
 import { UsageMeter } from './UsageMeter.js';
 
-const HOME_TAB = { title: 'Nova aba', tooltip: 'Nova aba', icon: '✦', renamable: false };
+const HOME_TAB = { title: 'Nova aba', tooltip: 'Nova aba', icon: 'home', renamable: false };
 
-const workspaceTab = (ws) => ({ title: ws.name, tooltip: ws.folder, icon: '▦', renamable: true });
+const workspaceTab = (ws) => ({ title: ws.name, tooltip: ws.folder, icon: 'workspace', renamable: true });
 
 /** Raiz do app: barra de abas + conteúdo de cada aba (todas montadas, só a ativa visível). */
 export function App({ store }) {

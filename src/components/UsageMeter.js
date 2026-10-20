@@ -30,6 +30,13 @@ function normalize(data) {
   }));
 }
 
+/** O invoke pode rejeitar com algo que não é texto (ex.: null); nunca mostra "null" na tela. */
+function describeError(error) {
+  if (typeof error === 'string' && error.trim()) return error;
+  if (typeof error?.message === 'string' && error.message.trim()) return error.message;
+  return 'Não foi possível ler o uso do plano';
+}
+
 function tone({ percent, severity }) {
   if (severity && severity !== 'normal') return severity === 'critical' ? 'danger' : 'warn';
   if (percent >= 90) return 'danger';
@@ -112,11 +119,12 @@ export function UsageMeter() {
     try {
       const data = await api.planUsage();
       limits = normalize(data);
-      plan = data?.plan ?? null;
+      plan = typeof data?.plan === 'string' && data.plan ? data.plan : null;
       error = null;
       updatedAt = new Date();
     } catch (e) {
-      error = String(e);
+      console.error('Falha ao ler o uso do plano', e);
+      error = describeError(e);
     } finally {
       loading = false;
       renderSummary();

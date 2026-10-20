@@ -1,6 +1,6 @@
 [package]
 name = "termgrid"
-version = "0.1.0"
+version = "0.2.0"
 description = "Terminais PowerShell / Claude Code em grid, com workspaces e abas"
 edition = "2021"
 

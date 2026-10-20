@@ -1,4 +1,5 @@
 import { h } from '../lib/dom.js';
+import { icon as svgIcon } from '../lib/icons.js';
 
 /**
  * Barra de abas no estilo navegador.
@@ -7,7 +8,7 @@ import { h } from '../lib/dom.js';
  */
 export function TabBar({ onSelect, onClose, onAdd, onRename, trailing }) {
   const list = h('div', { class: 'tabs', role: 'tablist' });
-  const addButton = h('button', { class: 'tab-add', title: 'Nova aba (Ctrl+Shift+T)', onClick: () => onAdd() }, '+');
+  const addButton = h('button', { class: 'tab-add', title: 'Nova aba (Ctrl+Shift+T)', onClick: () => onAdd() }, svgIcon('plus'));
   const el = h('header', { class: 'tabbar' }, list, addButton, h('div', { class: 'tabbar-spacer' }), trailing);
   const tabs = new Map(); // key -> { el, label, renamable }
 
@@ -51,7 +52,7 @@ export function TabBar({ onSelect, onClose, onAdd, onRename, trailing }) {
           },
           onDblClick: () => tabs.get(key)?.renamable && startRename(key),
         },
-        h('span', { class: 'tab-icon' }, icon ?? '▣'),
+        h('span', { class: 'tab-icon' }, svgIcon(icon ?? 'workspace')),
         label,
         h(
           'button',
@@ -61,7 +62,7 @@ export function TabBar({ onSelect, onClose, onAdd, onRename, trailing }) {
             onMouseDown: (event) => event.stopPropagation(),
             onClick: () => onClose(key),
           },
-          '✕',
+          svgIcon('close'),
         ),
       );
       tabs.set(key, { el: tabEl, label, renamable: Boolean(renamable) });
@@ -76,7 +77,7 @@ export function TabBar({ onSelect, onClose, onAdd, onRename, trailing }) {
       if (!tab) return;
       if (title != null) tab.label.textContent = title;
       tab.el.title = tooltip ?? title ?? tab.el.title;
-      if (icon != null) tab.el.querySelector('.tab-icon').textContent = icon;
+      if (icon != null) tab.el.querySelector('.tab-icon').replaceChildren(svgIcon(icon));
       if (renamable != null) tab.renamable = renamable;
     },
     setActive(key) {

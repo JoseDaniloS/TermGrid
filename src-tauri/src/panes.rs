@@ -16,6 +16,10 @@ pub enum PaneSpec {
         agents_dir: String,
         folder: String,
         fresh: bool,
+        /// Identifica a equipe (workspace) nos nomes das sessões: duas equipes abertas
+        /// na mesma pasta não podem ter sessões com o mesmo nome.
+        #[serde(default)]
+        team: Option<String>,
     },
     /// PowerShell simples na pasta do workspace.
     Powershell { folder: String },
@@ -51,13 +55,17 @@ fn powershell(cwd: &Path) -> CommandBuilder {
 impl PaneSpec {
     pub fn into_command(self) -> Result<CommandBuilder, String> {
         match self {
-            PaneSpec::Agent { role, agents_dir, folder, fresh } => {
+            PaneSpec::Agent { role, agents_dir, folder, fresh, team } => {
                 if !is_safe_name(&role) {
                     return Err(format!("nome de agente inválido: {role}"));
                 }
                 let cwd = existing_dir(&folder)?;
                 let script = agents::sessions_script(Path::new(&agents_dir))?;
                 let mut cmd = powershell(&cwd);
+                // Variável de ambiente (e não parâmetro): kits que não a conhecem continuam funcionando.
+                if let Some(team) = team.filter(|t| is_safe_name(t)) {
+                    cmd.env("CLAUDE_EQUIPE", team);
+                }
                 cmd.args(["-NoExit", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File"]);
                 cmd.arg(script);
                 cmd.args(["-Papel", role.as_str(), "-Pasta"]);

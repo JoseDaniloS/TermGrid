@@ -27,12 +27,13 @@ Abra uma pasta e o TermGrid sobe toda a sua equipe de agentes do Claude Code lad
 
 Trabalhar com vários agentes do Claude Code (um orquestrador, um leitor, um revisor…) significa abrir um monte de janelas, apontar cada uma para a pasta certa e lembrar qual sessão retomar. O TermGrid resolve isso:
 
-- 🧩 **Terminais em grid redimensionável.** Os painéis se organizam sozinhos, e você arrasta as divisórias com o mouse para ajustar. Duplo clique numa divisória iguala os tamanhos, e ⛶ maximiza um painel.
+- 🧩 **Terminais em grid redimensionável.** Os painéis se organizam sozinhos, e você arrasta as divisórias com o mouse para ajustar. Duplo clique numa divisória iguala os tamanhos, e o botão de maximizar amplia um painel. Cada terminal também pode ocupar 2 colunas e/ou 2 linhas, pelos botões de largura e altura dupla ou arrastando o canto inferior direito do painel.
 - 🗂️ **Workspaces salvos.** Cada pasta vira um workspace que guarda os terminais extras, o layout do grid e as abas abertas. Ao reabrir o app, tudo volta do jeito que estava.
 - 🤖 **Os agentes abrem sozinhos.** Ao iniciar um workspace, cada agente da sua pasta `AgentesClaude` sobe no seu painel, retomando a sessão anterior daquela pasta (ou com sessões novas, se você preferir).
 - 🌐 **Abas como num navegador.** Adicione, feche (inclusive com o clique do meio), renomeie com duplo clique e alterne entre os workspaces.
+- 🎛️ **Controles em cada painel.** Compactar a sessão do Claude (`/compact`), reiniciar, encerrar um agente (ele volta ao reabrir o workspace, retomando a sessão) ou fechar um terminal extra.
 - ➕ **Terminais extras**, como PowerShell, Bash (WSL) ou um Claude Code avulso, cuja sessão também é retomada.
-- 🟢 **Saúde dos agentes.** Cada painel de agente mostra se o Claude está conectado. Quando um agente cai, o app tenta reconectá-lo até 6 vezes, com intervalos crescentes; depois disso, basta clicar em ↻.
+- 🟢 **Saúde dos agentes.** Cada painel de agente mostra se o Claude está conectado. Quando um agente cai, o app tenta reconectá-lo até 6 vezes, com intervalos crescentes; depois disso, basta clicar em reiniciar.
 - 📊 **Medidor de uso do plano.** Mostra o uso da sessão de 5 h e o semanal (todos os modelos, Opus e Sonnet), com o tempo até redefinir.
 - 🔌 **Painel de MCPs.** Lista os servidores MCP globais, do projeto, dos conectores claude.ai e dos plugins, com o status de cada um.
 - 📋 **Copiar e colar como no Windows Terminal.** Ctrl+C copia o texto selecionado, Ctrl+V cola (sem texto na área de transferência, repassa o Ctrl+V para o Claude colar imagens) e o botão direito copia ou cola.
@@ -103,6 +104,8 @@ powershell -NoExit -NoProfile -ExecutionPolicy Bypass -File IniciarSessoes.ps1 -
 
 É o script que define o modelo, o prompt e as permissões de cada agente, e que guarda o ID da sessão por pasta em `sessoes\` para o `--resume`. A opção **"Iniciar com sessões novas"** passa `-Nova` apenas na primeira execução de cada painel. Reiniciar um painel depois disso retoma a sessão que acabou de ser criada.
 
+O TermGrid também passa a variável de ambiente `CLAUDE_EQUIPE`, um identificador curto por workspace. O script do kit a usa no nome das sessões (ex.: `leitor-1a2b`), para que duas equipes abertas ao mesmo tempo nunca tenham sessões com o mesmo nome no `SendMessage`.
+
 ## ⌨️ Atalhos
 
 | Atalho | Ação |
@@ -149,12 +152,13 @@ src/                         # Frontend (JS vanilla + xterm.js, componentes por 
 │   ├── TabBar.js            # barra de abas estilo navegador
 │   ├── HomeView.js          # tela "Nova aba": abrir pasta, workspaces salvos
 │   ├── WorkspaceView.js     # agentes + terminais extras de um workspace
-│   ├── TerminalGrid.js      # grid com divisórias arrastáveis
+│   ├── TerminalGrid.js      # grid com divisórias arrastáveis e spans por painel
+│   ├── gridLayout.js        # posicionamento dos painéis no grid (sem DOM)
 │   ├── TerminalPane.js      # painel com xterm ligado a um PTY
 │   ├── UsageMeter.js        # medidor de uso do plano
 │   ├── McpPanel.js          # lista de servidores MCP
 │   └── Modal.js             # janela modal reutilizável
-└── lib/                     # api (ponte Tauri), store (persistência), agentMonitor, dom
+└── lib/                     # api (ponte Tauri), store (persistência), agentMonitor, dom, icons
 
 src-tauri/src/               # Backend em Rust
 ├── pty.rs                   # pseudo-terminais via ConPTY (portable-pty)

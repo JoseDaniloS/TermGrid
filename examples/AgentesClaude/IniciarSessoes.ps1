@@ -47,17 +47,23 @@ function Listar-Papeis {
     @('orquestrador') + @($workers)
 }
 
+# Hash do caminho completo: pastas diferentes nunca compartilham sessões.
+$md5 = [System.Security.Cryptography.MD5]::Create()
+$hashPasta = -join ($md5.ComputeHash([Text.Encoding]::UTF8.GetBytes($Pasta.ToLower()))[0..3] |
+    ForEach-Object { $_.ToString('x2') })
+# Sufixo dos nomes das sessões (ex.: leitor-1a2b): com duas equipes abertas, nomes iguais
+# deixariam o SendMessage ambíguo. O TermGrid passa um por workspace em CLAUDE_EQUIPE;
+# sem ele, vale o hash da pasta.
+$sufixoEquipe = if ($env:CLAUDE_EQUIPE -match '^[A-Za-z0-9]{1,12}$') { $env:CLAUDE_EQUIPE } else { $hashPasta.Substring(0, 4) }
+function Nome-Sessao([string]$papel) { "$papel-$sufixoEquipe" }
+
 # Uma sessão por pasta + papel: --resume se já existe, senão --session-id novo.
 function Args-Sessao([string]$papel) {
     New-Item -ItemType Directory -Force -Path $dirSessoes | Out-Null
-    # Nome legível (últimos 40 caracteres) + hash do caminho completo, para pastas
-    # diferentes nunca compartilharem a mesma sessão.
+    # Nome legível (últimos 40 caracteres) + hash do caminho completo.
     $legivel = ($Pasta.ToLower() -replace '[^a-z0-9]+', '-').Trim('-')
     if ($legivel.Length -gt 40) { $legivel = $legivel.Substring($legivel.Length - 40).Trim('-') }
-    $md5 = [System.Security.Cryptography.MD5]::Create()
-    $hash = -join ($md5.ComputeHash([Text.Encoding]::UTF8.GetBytes($Pasta.ToLower()))[0..3] |
-        ForEach-Object { $_.ToString('x2') })
-    $arquivo = Join-Path $dirSessoes "$legivel-$hash-$papel.txt"
+    $arquivo = Join-Path $dirSessoes "$legivel-$hashPasta-$papel.txt"
     $projetos = Join-Path $env:USERPROFILE '.claude\projects'
 
     if (-not $Nova -and (Test-Path -LiteralPath $arquivo)) {
@@ -73,11 +79,13 @@ function Args-Sessao([string]$papel) {
     @('--session-id', $id)
 }
 
+$nomesEquipe = (Listar-Papeis | ForEach-Object { "'$(Nome-Sessao $_)'" }) -join ', '
 $blocoEquipe = @"
 
 COMO TRABALHAR EM EQUIPE:
-- Você faz parte de uma equipe de sessões do Claude Code abertas na mesma pasta.
-- Use a ferramenta ListAgents para ver quais sessões estão ativas e SendMessage para falar com elas pelo nome.
+- Você faz parte de uma equipe de sessões do Claude Code abertas na mesma pasta. Os outros papéis já estão abertos como sessões próprias: fale com eles somente por SendMessage. Nunca crie subagentes (ferramenta Agent/Task) para fazer o trabalho deles.
+- Nomes das sessões desta equipe: $nomesEquipe. Quando as instruções citarem um papel (por exemplo 'leitor'), use o nome completo com o sufixo -$sufixoEquipe no SendMessage. Sessões com outro sufixo são de outras equipes: ignore-as.
+- Use a ferramenta ListAgents para ver quais sessões estão ativas e SendMessage para falar com elas pelo nome. Se o nome aparecer repetido no ListAgents, use o nome com o [ref] mostrado ao lado.
 - Em cada mensagem diga exatamente o que quer e o formato da resposta; as outras sessões não conhecem o seu contexto.
 - Depois de enviar, aguarde a resposta chegar como mensagem. Não repita o envio.
 "@
@@ -101,14 +109,16 @@ if ($Papel) {
     $settings = Join-Path $env:TEMP "claude-sessoes-settings-$Papel.json"
     Set-Content -LiteralPath $settings -Value '{"crossSessionInbound":"accept"}' -Encoding ASCII
 
-    $argsClaude = @('--name', $Papel, '--settings', $settings)
+    $argsClaude = @('--name', (Nome-Sessao $Papel), '--settings', $settings)
 
     if ($Papel -eq 'orquestrador') {
         $dir = Join-Path $dirAgentes 'orquestrador'
         $modelo = Ler-Texto (Join-Path $dir 'modelo.txt') 'opus'
         $instrucoes = (Ler-Texto (Join-Path $dir 'instrucoes.md')) + $blocoEquipe
         $permitidas = @(Ler-Linhas (Join-Path $dir 'tools-permitidas.txt')) + @('ListAgents', 'SendMessage')
-        $bloqueadas = @(Ler-Linhas (Join-Path $dir 'tools-bloqueadas.txt'))
+        # Os outros papéis são sessões peer: subagentes em segundo plano duplicariam o trabalho.
+        $bloqueadas = @(Ler-Linhas (Join-Path $dir 'tools-bloqueadas.txt')) + @('Agent', 'Task')
+        $permitidas = $permitidas | Where-Object { $_ -notin 'Agent', 'Task' }
     } else {
         $dir = Join-Path $dirAgentes "subagentes\$Papel"
         if (-not (Test-Path -LiteralPath $dir)) { throw "Papel não encontrado: $dir" }

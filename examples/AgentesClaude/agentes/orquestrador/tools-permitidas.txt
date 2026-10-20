@@ -4,4 +4,3 @@ Glob
 Edit
 Write
 Bash
-Agent

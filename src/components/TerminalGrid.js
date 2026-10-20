@@ -1,14 +1,11 @@
 import { h } from '../lib/dom.js';
+import { computeLayout, gutterSegments, normalizeSpan } from './gridLayout.js';
 
 const GUTTER = 6;
 const MIN_TRACK = 80;
 
 const equal = (n) => Array.from({ length: n }, () => 1);
-
-function dimensions(count) {
-  const cols = count <= 1 ? 1 : Math.ceil(Math.sqrt(count));
-  return { cols, rows: Math.max(1, Math.ceil(count / cols)) };
-}
+const isDefaultSpan = (span) => span.col === 1 && span.row === 1;
 
 /** "1fr 6px 1fr ..." alternando trilhas de conteúdo e divisórias. */
 function template(fractions) {
@@ -17,9 +14,10 @@ function template(fractions) {
 
 /**
  * Grid de painéis com divisórias arrastáveis.
- * O layout ({ cols: number[], rows: number[] }) guarda as frações de cada trilha.
+ * O layout ({ cols: number[], rows: number[], spans?: { [id]: { col, row } } }) guarda as
+ * frações de cada trilha e quantas células (1 ou 2) cada painel ocupa.
  */
-export function TerminalGrid({ layout, onLayoutChange }) {
+export function TerminalGrid({ layout, onLayoutChange, onSpanChange }) {
   const el = h('div', { class: 'grid' });
   const items = []; // { id, el }
   // Layout salvo: aplicado quando o número de trilhas bate (os painéis entram um a um).
@@ -27,43 +25,90 @@ export function TerminalGrid({ layout, onLayoutChange }) {
   let cols = [];
   let rows = [];
   let maximizedId = null;
+  const spans = new Map(Object.entries(layout?.spans ?? {}).map(([id, span]) => [id, normalizeSpan(span)]));
+  const spanOf = (id) => spans.get(id) ?? { col: 1, row: 1 };
 
   function applyTemplate() {
     el.style.gridTemplateColumns = template(cols);
     el.style.gridTemplateRows = template(rows);
   }
 
+  // Células n..m (inclusivo) em linhas do CSS grid, contando as trilhas das divisórias.
+  const cells = (from, to) => `${2 * from + 1} / ${2 * to + 2}`;
+
   function relayout() {
-    const dims = dimensions(items.length);
+    const dims = computeLayout(items.map((item) => spanOf(item.id)));
     if (cols.length !== dims.cols) cols = saved?.cols?.length === dims.cols ? [...saved.cols] : equal(dims.cols);
     if (rows.length !== dims.rows) rows = saved?.rows?.length === dims.rows ? [...saved.rows] : equal(dims.rows);
     applyTemplate();
 
     el.querySelectorAll(':scope > .gutter').forEach((g) => g.remove());
-    const lastRowCount = items.length - (dims.rows - 1) * dims.cols;
 
     items.forEach((item, index) => {
-      const row = Math.floor(index / dims.cols);
-      const col = index % dims.cols;
-      const isLast = index === items.length - 1;
-      item.el.style.gridRow = `${2 * row + 1}`;
-      item.el.style.gridColumn = isLast ? `${2 * col + 1} / -1` : `${2 * col + 1}`;
+      const place = dims.places[index];
+      item.el.style.gridRow = cells(place.row, place.row + place.rowSpan - 1);
+      item.el.style.gridColumn = cells(place.col, place.col + place.colSpan - 1);
     });
 
-    for (let i = 0; i < dims.cols - 1; i++) {
-      // Na última linha incompleta o último painel ocupa o resto: a divisória para antes.
-      const fullHeight = dims.rows === 1 || i < lastRowCount - 1;
-      const gridRow = fullHeight ? '1 / -1' : `1 / ${2 * dims.rows - 2}`;
-      el.append(gutter('col', i, { gridColumn: `${2 * i + 2}`, gridRow }));
-    }
-    for (let j = 0; j < dims.rows - 1; j++) {
-      el.append(gutter('row', j, { gridRow: `${2 * j + 2}`, gridColumn: '1 / -1' }));
+    for (const { axis, index, from, to } of gutterSegments(dims)) {
+      const style =
+        axis === 'col'
+          ? { gridColumn: `${2 * index + 2}`, gridRow: cells(from, to) }
+          : { gridRow: `${2 * index + 2}`, gridColumn: cells(from, to) };
+      el.append(gutter(axis, index, style));
     }
   }
 
   function layoutChanged() {
     saved = { cols: [...cols], rows: [...rows] };
+    // Inclui painéis fora do grid agora (agente encerrado): o span volta ao reabrir.
+    if (spans.size) saved.spans = Object.fromEntries(spans);
     onLayoutChange?.(saved);
+  }
+
+  function setSpan(id, span) {
+    const next = normalizeSpan(span);
+    const current = spanOf(id);
+    if (next.col === current.col && next.row === current.row) return;
+    if (isDefaultSpan(next)) spans.delete(id);
+    else spans.set(id, next);
+    relayout();
+    layoutChanged();
+    onSpanChange?.(id, next);
+  }
+
+  /** Arrasta o canto do painel: o tamanho encaixa em 1 ou 2 células em cada direção. */
+  function startSpanDrag(id, event) {
+    const item = items.find((i) => i.id === id);
+    if (!item || maximizedId) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const target = event.currentTarget;
+    target.setPointerCapture(event.pointerId);
+    el.classList.add('resizing-span');
+
+    const startRect = item.el.getBoundingClientRect();
+    const start = spanOf(id);
+    // Tamanho de uma célula do painel (aproximado pelas frações atuais).
+    const cellW = startRect.width / start.col;
+    const cellH = startRect.height / start.row;
+
+    const onMove = (moveEvent) => {
+      // Relido a cada movimento: o relayout pode mudar o painel de lugar durante o arraste.
+      const rect = item.el.getBoundingClientRect();
+      const width = moveEvent.clientX - rect.left;
+      const height = moveEvent.clientY - rect.top;
+      setSpan(id, { col: width > cellW * 1.5 ? 2 : 1, row: height > cellH * 1.5 ? 2 : 1 });
+    };
+    const onUp = () => {
+      target.removeEventListener('pointermove', onMove);
+      target.removeEventListener('pointerup', onUp);
+      target.removeEventListener('pointercancel', onUp);
+      el.classList.remove('resizing-span');
+    };
+    target.addEventListener('pointermove', onMove);
+    target.addEventListener('pointerup', onUp);
+    target.addEventListener('pointercancel', onUp);
   }
 
   function gutter(axis, index, style) {
@@ -125,14 +170,19 @@ export function TerminalGrid({ layout, onLayoutChange }) {
       el.append(paneEl);
       relayout();
     },
-    remove(id) {
+    /** forget = true apaga o span salvo (painel removido de vez, não só encerrado). */
+    remove(id, { forget = false } = {}) {
       const index = items.findIndex((item) => item.id === id);
       if (index === -1) return;
       const [item] = items.splice(index, 1);
       item.el.remove();
       if (maximizedId === id) this.toggleMaximize(id);
       relayout();
+      if (forget && spans.delete(id)) layoutChanged();
     },
+    getSpan: spanOf,
+    setSpan,
+    startSpanDrag,
     toggleMaximize(id) {
       items.forEach((item) => item.el.classList.remove('maximized'));
       maximizedId = maximizedId === id ? null : id;
